@@ -283,8 +283,8 @@
             </div>
         </div>
     </div>
-    
-    <!-- Firebase SDK Imports & Initialization -->
+
+    <!-- Single Consolidated ES Module Block for Firebase & App Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -292,7 +292,7 @@
             getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, onSnapshot 
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // Your Firebase configuration
+        // User Specified Firebase Config
         const firebaseConfig = {
             apiKey: "AIzaSyCsl3k_y8RNuUXbUZ8YCLwCK71LeVge5OA",
             authDomain: "espace-fraicheur.firebaseapp.com",
@@ -303,37 +303,9 @@
             measurementId: "G-1ECFCP966G"
         };
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-
-        // Expose Firebase tools globally so standard script functions can access them
-        window.db = db;
-        window.colRef = (name) => collection(db, name);
-        window.addDoc = addDoc;
-        window.getDocs = getDocs;
-        window.deleteDoc = deleteDoc;
-        window.doc = doc;
-        window.updateDoc = updateDoc;
-        window.onSnapshot = onSnapshot;
-
-        // Authenticate anonymously
-        signInAnonymously(auth)
-            .then(() => {
-                document.getElementById('status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
-                document.getElementById('status-text').innerText = "Cloud Synced";
-                if (typeof initApp === 'function') initApp();
-            })
-            .catch((error) => {
-                console.error("Firebase Auth Error:", error);
-                document.getElementById('status-dot').className = "w-2.5 h-2.5 rounded-full bg-rose-500";
-                document.getElementById('status-text').innerText = "Sync Offline (Demo mode)";
-                if (typeof initApp === 'function') initApp();
-            });
-    </script>
-
-    <!-- App Logic -->
-    <script>
+        // State variables
+        let app, auth, db;
+        let isCloudConnected = false;
         let products = [
             { id: 'p1', name: 'Fresh Organic Tomatoes (1kg)', category: 'Produce', price: 75, stock: 50 },
             { id: 'p2', name: 'Local Lettuce (Pack)', category: 'Produce', price: 35, stock: 40 },
@@ -342,16 +314,83 @@
         let shiftLogs = [];
         let ledgerEntries = [];
 
+        // Helper collection reference
+        const colRef = (name) => collection(db, name);
+
+        // Core App Initialization
         function initApp() {
             const today = new Date().toISOString().split('T')[0];
-            document.getElementById('tally-date').value = today;
-            document.getElementById('exp-date').value = today;
-            document.getElementById('ledger-month-filter').value = today.slice(0, 7);
+            const tallyDateEl = document.getElementById('tally-date');
+            const expDateEl = document.getElementById('exp-date');
+            const ledgerMonthEl = document.getElementById('ledger-month-filter');
 
-            loadFromCloud();
+            if(tallyDateEl) tallyDateEl.value = today;
+            if(expDateEl) expDateEl.value = today;
+            if(ledgerMonthEl) ledgerMonthEl.value = today.slice(0, 7);
+
+            renderAll();
         }
 
-        function switchTab(tabId) {
+        // Firebase Initialization & Anonymous Auth Setup
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            signInAnonymously(auth)
+                .then(() => {
+                    isCloudConnected = true;
+                    document.getElementById('status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+                    document.getElementById('status-text').innerText = "Cloud Synced";
+                    setupCloudListeners();
+                    initApp();
+                })
+                .catch((error) => {
+                    console.warn("Auth error (falling back to offline mode):", error);
+                    setOfflineStatus();
+                    initApp();
+                });
+        } catch(err) {
+            console.warn("Firebase initialization failed:", err);
+            setOfflineStatus();
+            initApp();
+        }
+
+        function setOfflineStatus() {
+            isCloudConnected = false;
+            document.getElementById('status-dot').className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+            document.getElementById('status-text').innerText = "Sync Offline (Demo mode)";
+        }
+
+        // Realtime Firestore Sync
+        function setupCloudListeners() {
+            if (!db || !isCloudConnected) return;
+
+            // Sync Products
+            onSnapshot(colRef('espace_products'), (snapshot) => {
+                if(!snapshot.empty) {
+                    products = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+                }
+                renderCatalog();
+                renderTallyTable();
+            }, (err) => console.error("Products sync error:", err));
+
+            // Sync Shifts
+            onSnapshot(colRef('espace_shifts'), (snapshot) => {
+                shiftLogs = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+                renderRecordsTable();
+                renderLedger();
+            }, (err) => console.error("Shifts sync error:", err));
+
+            // Sync Expenses
+            onSnapshot(colRef('espace_expenses'), (snapshot) => {
+                ledgerEntries = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+                renderLedger();
+            }, (err) => console.error("Expenses sync error:", err));
+        }
+
+        // Navigation
+        window.switchTab = function(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
             document.querySelectorAll('.tab-btn').forEach(el => {
                 el.classList.remove('border-b-2', 'border-white', 'text-white');
@@ -359,39 +398,15 @@
             });
             document.getElementById(`tab-${tabId}`).classList.remove('hidden');
             const activeBtn = document.getElementById(`tab-btn-${tabId}`);
-            activeBtn.classList.add('border-b-2', 'border-white', 'text-white');
-            activeBtn.classList.remove('text-emerald-200');
+            if(activeBtn) {
+                activeBtn.classList.add('border-b-2', 'border-white', 'text-white');
+                activeBtn.classList.remove('text-emerald-200');
+            }
 
             if(tabId === 'tally') renderTallyTable();
             if(tabId === 'ledger') renderLedger();
             if(tabId === 'records') renderRecordsTable();
-        }
-
-        function loadFromCloud() {
-            if (!window.db) { renderAll(); return; }
-            
-            // Listen to Products
-            onSnapshot(window.colRef('espace_products'), (snapshot) => {
-                if(!snapshot.empty) {
-                    products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                }
-                renderCatalog();
-                renderTallyTable();
-            });
-
-            // Listen to Shift Logs
-            onSnapshot(window.colRef('espace_shifts'), (snapshot) => {
-                shiftLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderRecordsTable();
-                syncShiftsToLedger();
-            });
-
-            // Listen to Expenses
-            onSnapshot(window.colRef('espace_expenses'), (snapshot) => {
-                ledgerEntries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderLedger();
-            });
-        }
+        };
 
         function renderAll() {
             renderCatalog();
@@ -400,9 +415,10 @@
             renderRecordsTable();
         }
 
-        // --- CATALOG ---
-        function renderCatalog() {
+        // --- CATALOG MODULE ---
+        window.renderCatalog = function() {
             const tbody = document.getElementById('catalog-table-body');
+            if(!tbody) return;
             tbody.innerHTML = products.map(p => `
                 <tr class="hover:bg-slate-50">
                     <td class="p-3 font-medium">${p.name}</td>
@@ -415,9 +431,9 @@
                     </td>
                 </tr>
             `).join('');
-        }
+        };
 
-        function openProductModal(id = null) {
+        window.openProductModal = function(id = null) {
             document.getElementById('product-modal').classList.remove('hidden');
             if(id) {
                 const p = products.find(x => x.id === id);
@@ -435,72 +451,75 @@
                 document.getElementById('prod-price').value = '';
                 document.getElementById('prod-stock').value = '';
             }
-        }
+        };
 
-        function closeProductModal() { document.getElementById('product-modal').classList.add('hidden'); }
+        window.closeProductModal = function() { 
+            document.getElementById('product-modal').classList.add('hidden'); 
+        };
 
-        async function saveProduct() {
+        window.saveProduct = async function() {
             const id = document.getElementById('edit-product-id').value;
             const data = {
-                name: document.getElementById('prod-name').value,
-                category: document.getElementById('prod-category').value,
+                name: document.getElementById('prod-name').value.trim(),
+                category: document.getElementById('prod-category').value.trim(),
                 price: parseFloat(document.getElementById('prod-price').value) || 0,
                 stock: parseInt(document.getElementById('prod-stock').value) || 0
             };
-            if(!data.name) return alert('Please enter product name.');
+            if(!data.name) return alert('Please enter a product name.');
 
-            if(window.db) {
+            if(isCloudConnected && db) {
                 if(id) {
-                    await updateDoc(doc(window.db, 'espace_products', id), data);
+                    await updateDoc(doc(db, 'espace_products', id), data);
                 } else {
-                    await addDoc(window.colRef('espace_products'), data);
+                    await addDoc(colRef('espace_products'), data);
                 }
             } else {
                 if(id) {
                     const idx = products.findIndex(p => p.id === id);
-                    products[idx] = { id, ...data };
+                    if(idx !== -1) products[idx] = { id, ...data };
                 } else {
                     products.push({ id: 'p_' + Date.now(), ...data });
                 }
                 renderAll();
             }
-            closeProductModal();
-        }
+            window.closeProductModal();
+        };
 
-        async function deleteProduct(id) {
+        window.deleteProduct = async function(id) {
             if(!confirm('Are you sure you want to delete this product?')) return;
-            if(window.db) {
-                await deleteDoc(doc(window.db, 'espace_products', id));
+            if(isCloudConnected && db) {
+                await deleteDoc(doc(db, 'espace_products', id));
             } else {
                 products = products.filter(p => p.id !== id);
                 renderAll();
             }
-        }
+        };
 
-        function editProduct(id) { openProductModal(id); }
+        window.editProduct = function(id) { window.openProductModal(id); };
 
-        // --- DAILY TALLY ---
-        function renderTallyTable() {
+        // --- DAILY TALLY MODULE ---
+        window.renderTallyTable = function() {
             const tbody = document.getElementById('tally-table-body');
+            if(!tbody) return;
             tbody.innerHTML = products.map(p => `
                 <tr class="hover:bg-slate-50 tally-row" data-id="${p.id}" data-price="${p.price}">
                     <td class="p-3 font-medium">${p.name}</td>
-                    <td class="p-3 text-emerald-700 font-semibold">Rs ${p.price.toFixed(2)}</td>
+                    <td class="p-3 text-emerald-700 font-semibold">Rs ${Number(p.price).toFixed(2)}</td>
                     <td class="p-3"><input type="number" value="${p.stock}" class="tally-start w-24 border border-slate-300 rounded p-1.5 text-sm bg-white" oninput="calculateTallyTotals()"></td>
                     <td class="p-3"><input type="number" value="0" class="tally-return w-24 border border-slate-300 rounded p-1.5 text-sm bg-white" oninput="calculateTallyTotals()"></td>
                     <td class="p-3 font-bold text-slate-700 tally-sold">0</td>
                     <td class="p-3 text-right font-bold text-emerald-700 tally-rev">Rs 0.00</td>
                 </tr>
             `).join('');
-            calculateTallyTotals();
-        }
+            window.calculateTallyTotals();
+        };
 
-        function calculateTallyTotals() {
+        window.calculateTallyTotals = function() {
             let totalExpected = 0;
             document.querySelectorAll('.tally-row').forEach(row => {
                 const price = parseFloat(row.dataset.price);
                 const start = parseInt(row.querySelector('.tally-start').value) || 0;
-                const ret = parseInt(row.querySelector('.tally-end, .tally-return').value) || 0;
+                const ret = parseInt(row.querySelector('.tally-return').value) || 0;
                 const sold = Math.max(0, start - ret);
                 const rev = sold * price;
                 
@@ -526,9 +545,9 @@
                 badge.className = "inline-block px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500 text-white mt-1";
                 badge.innerText = `Shortage: -Rs ${Math.abs(variance).toFixed(2)}`;
             }
-        }
+        };
 
-        async function saveDailyTally() {
+        window.saveDailyTally = async function() {
             const date = document.getElementById('tally-date').value;
             const seller = document.getElementById('seller-name').value.trim();
             const actual = parseFloat(document.getElementById('actual-cash').value) || 0;
@@ -557,28 +576,29 @@
                 timestamp: Date.now()
             };
 
-            if(window.db) {
-                await addDoc(window.colRef('espace_shifts'), shiftData);
+            if(isCloudConnected && db) {
+                await addDoc(colRef('espace_shifts'), shiftData);
             } else {
                 shiftLogs.push({ id: 's_' + Date.now(), ...shiftData });
             }
 
-            alert('Shift report successfully saved and synced to cloud!');
-            switchTab('records');
-        }
+            alert('Shift report successfully recorded and synced!');
+            window.switchTab('records');
+        };
 
-        // --- RECORDS & LEDGER SYNC ---
-        function renderRecordsTable() {
+        // --- SHIFT LOGS ARCHIVE ---
+        window.renderRecordsTable = function() {
             const tbody = document.getElementById('records-table-body');
+            if(!tbody) return;
             tbody.innerHTML = shiftLogs.map(s => `
                 <tr class="hover:bg-slate-50">
                     <td class="p-3 font-medium">${s.date}</td>
                     <td class="p-3">${s.seller}</td>
-                    <td class="p-3 text-emerald-700 font-semibold">Rs ${s.expectedRevenue.toFixed(2)}</td>
-                    <td class="p-3 font-bold">Rs ${s.actualCash.toFixed(2)}</td>
+                    <td class="p-3 text-emerald-700 font-semibold">Rs ${Number(s.expectedRevenue).toFixed(2)}</td>
+                    <td class="p-3 font-bold">Rs ${Number(s.actualCash).toFixed(2)}</td>
                     <td class="p-3">
                         <span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${s.variance >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
-                            ${s.variance === 0 ? 'Balanced' : (s.variance > 0 ? `+Rs ${s.variance.toFixed(2)}` : `-Rs ${Math.abs(s.variance).toFixed(2)}`)}
+                            ${s.variance === 0 ? 'Balanced' : (s.variance > 0 ? `+Rs ${Number(s.variance).toFixed(2)}` : `-Rs ${Math.abs(s.variance).toFixed(2)}`)}
                         </span>
                     </td>
                     <td class="p-3 text-right">
@@ -586,109 +606,115 @@
                     </td>
                 </tr>
             `).join('');
-        }
+        };
 
-        async function deleteShift(id) {
+        window.deleteShift = async function(id) {
             if(!confirm('Delete this shift report?')) return;
-            if(window.db) {
-                await deleteDoc(doc(window.db, 'espace_shifts', id));
+            if(isCloudConnected && db) {
+                await deleteDoc(doc(db, 'espace_shifts', id));
             } else {
                 shiftLogs = shiftLogs.filter(s => s.id !== id);
-                renderRecordsTable();
+                window.renderRecordsTable();
+                window.renderLedger();
             }
-        }
+        };
 
-        // --- FINANCIAL LEDGER ---
-        function openExpenseModal() { document.getElementById('expense-modal').classList.remove('hidden'); }
-        function closeExpenseModal() { document.getElementById('expense-modal').classList.add('hidden'); }
+        // --- FINANCIAL LEDGER MODULE ---
+        window.openExpenseModal = function() { 
+            document.getElementById('expense-modal').classList.remove('hidden'); 
+        };
+        
+        window.closeExpenseModal = function() { 
+            document.getElementById('expense-modal').classList.add('hidden'); 
+        };
 
-        async function saveExpense() {
+        window.saveExpense = async function() {
             const data = {
                 type: 'Expense',
                 date: document.getElementById('exp-date').value,
                 category: document.getElementById('exp-category').value,
-                notes: document.getElementById('exp-notes').value || 'Operational Expense',
+                notes: document.getElementById('exp-notes').value.trim() || 'Operational Expense',
                 amount: parseFloat(document.getElementById('exp-amount').value) || 0,
                 timestamp: Date.now()
             };
-            if(!data.amount) return alert('Please enter an amount.');
+            if(!data.amount) return alert('Please enter an expense amount.');
 
-            if(window.db) {
-                await addDoc(window.colRef('espace_expenses'), data);
+            if(isCloudConnected && db) {
+                await addDoc(colRef('espace_expenses'), data);
             } else {
                 ledgerEntries.push({ id: 'e_' + Date.now(), ...data });
-                renderLedger();
+                window.renderLedger();
             }
-            closeExpenseModal();
+            window.closeExpenseModal();
             document.getElementById('exp-amount').value = '';
             document.getElementById('exp-notes').value = '';
-        }
+        };
 
-        function syncShiftsToLedger() {
-            renderLedger();
-        }
-
-        function renderLedger() {
-            const selectedMonth = document.getElementById('ledger-month-filter').value;
+        window.renderLedger = function() {
+            const monthFilterEl = document.getElementById('ledger-month-filter');
+            if(!monthFilterEl) return;
+            const selectedMonth = monthFilterEl.value;
             const tbody = document.getElementById('ledger-table-body');
 
-            // Build unified transaction list for selected month
             let transactions = [];
 
-            // Add shift incomes
+            // Consolidate Shift Collections
             shiftLogs.forEach(s => {
-                if(!s.date.startsWith(selectedMonth)) return;
-                transactions.push({
-                    id: s.id,
-                    date: s.date,
-                    type: 'Income',
-                    category: 'Field Sales Collection',
-                    reference: `Seller: ${s.seller}`,
-                    amount: s.actualCash,
-                    variance: s.variance,
-                    isShift: true
-                });
+                if(s.date && s.date.startsWith(selectedMonth)) {
+                    transactions.push({
+                        id: s.id,
+                        date: s.date,
+                        type: 'Income',
+                        category: 'Field Sales Collection',
+                        reference: `Seller: ${s.seller}`,
+                        amount: s.actualCash,
+                        variance: s.variance,
+                        isShift: true
+                    });
+                }
             });
 
-            // Add recorded expenses
+            // Consolidate Operational Expenses
             ledgerEntries.forEach(e => {
-                if(!e.date.startsWith(selectedMonth)) return;
-                transactions.push({
-                    id: e.id,
-                    date: e.date,
-                    type: 'Expense',
-                    category: e.category,
-                    reference: e.notes,
-                    amount: e.amount,
-                    isShift: false
-                });
+                if(e.date && e.date.startsWith(selectedMonth)) {
+                    transactions.push({
+                        id: e.id,
+                        date: e.date,
+                        type: 'Expense',
+                        category: e.category,
+                        reference: e.notes,
+                        amount: e.amount,
+                        isShift: false
+                    });
+                }
             });
 
-            // Sort by date descending
             transactions.sort((a,b) => new Date(b.date) - new Date(a.date));
 
             let totalRev = 0;
             let totalExp = 0;
             let totalShortages = 0;
 
-            tbody.innerHTML = transactions.map(t => {
-                if(t.type === 'Income') totalRev += t.amount;
-                if(t.type === 'Expense') totalExp += t.amount;
-                if(t.isShift && t.variance < 0) totalShortages += Math.abs(t.variance);
+            if(tbody) {
+                tbody.innerHTML = transactions.map(t => {
+                    if(t.type === 'Income') totalRev += t.amount;
+                    if(t.type === 'Expense') totalExp += t.amount;
+                    if(t.isShift && t.variance < 0) totalShortages += Math.abs(t.variance);
 
-                return `
-                    <tr class="hover:bg-slate-50">
-                        <td class="p-3 font-medium">${t.date}</td>
-                        <td class="p-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${t.type === 'Income' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${t.type}</span></td>
-                        <td class="p-3">${t.category}</td>
-                        <td class="p-3 text-slate-500 text-xs">${t.reference}</td>
-                        <td class="p-3 text-right font-bold ${t.type === 'Income' ? 'text-emerald-700' : 'text-rose-700'}">${t.type === 'Income' ? '+' : '-'}Rs ${t.amount.toFixed(2)}</td>
-                        <td class="p-3 text-right no-print">
-                            <button onclick="deleteLedgerItem('${t.id}', ${t.isShift})" class="text-rose-600 hover:text-rose-800 p-1"><i class="fa-solid fa-trash"></i></button>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
+                    return `
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-medium">${t.date}</td>
+                            <td class="p-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${t.type === 'Income' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${t.type}</span></td>
+                            <td class="p-3">${t.category}</td>
+                            <td class="p-3 text-slate-500 text-xs">${t.reference}</td>
+                            <td class="p-3 text-right font-bold ${t.type === 'Income' ? 'text-emerald-700' : 'text-rose-700'}">${t.type === 'Income' ? '+' : '-'}Rs ${Number(t.amount).toFixed(2)}</td>
+                            <td class="p-3 text-right no-print">
+                                <button onclick="deleteLedgerItem('${t.id}', ${t.isShift})" class="text-rose-600 hover:text-rose-800 p-1"><i class="fa-solid fa-trash"></i></button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
 
             const netProfit = totalRev - totalExp;
 
@@ -700,21 +726,21 @@
             netEl.className = `text-2xl font-black mt-1 ${netProfit >= 0 ? 'text-blue-900' : 'text-rose-900'}`;
 
             document.getElementById('kpi-shortages').innerText = `Rs ${totalShortages.toFixed(2)}`;
-        }
+        };
 
-        async function deleteLedgerItem(id, isShift) {
+        window.deleteLedgerItem = async function(id, isShift) {
             if(!confirm('Delete this ledger entry?')) return;
             const collectionName = isShift ? 'espace_shifts' : 'espace_expenses';
-            if(window.db) {
-                await deleteDoc(doc(window.db, collectionName, id));
+            if(isCloudConnected && db) {
+                await deleteDoc(doc(db, collectionName, id));
             } else {
                 if(isShift) shiftLogs = shiftLogs.filter(s => s.id !== id);
                 else ledgerEntries = ledgerEntries.filter(e => e.id !== id);
-                renderLedger();
+                window.renderLedger();
             }
-        }
+        };
 
-        function exportLedgerCSV() {
+        window.exportLedgerCSV = function() {
             let csv = "Date,Type,Category,Reference,Amount (Rs)\n";
             shiftLogs.forEach(s => {
                 csv += `"${s.date}","Income","Field Sales Collection","Seller: ${s.seller}",${s.actualCash}\n`;
@@ -728,7 +754,7 @@
             a.setAttribute('href', url);
             a.setAttribute('download', `Espace_Fraicheur_Ledger_${document.getElementById('ledger-month-filter').value}.csv`);
             a.click();
-        }
+        };
     </script>
 </body>
 </html>

@@ -283,15 +283,16 @@
             </div>
         </div>
     </div>
-
-    <!-- Firebase SDK Imports -->
+    
     <!-- Firebase SDK Imports & Initialization -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { 
+            getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, onSnapshot 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // Your exact Firebase configuration
+        // Your Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyCsl3k_y8RNuUXbUZ8YCLwCK71LeVge5OA",
             authDomain: "espace-fraicheur.firebaseapp.com",
@@ -306,11 +307,17 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Expose db and collection helper to the global window scope
+        // Expose Firebase tools globally so standard script functions can access them
         window.db = db;
         window.colRef = (name) => collection(db, name);
+        window.addDoc = addDoc;
+        window.getDocs = getDocs;
+        window.deleteDoc = deleteDoc;
+        window.doc = doc;
+        window.updateDoc = updateDoc;
+        window.onSnapshot = onSnapshot;
 
-        // Authenticate anonymously so Firestore security rules allow reading/writing
+        // Authenticate anonymously
         signInAnonymously(auth)
             .then(() => {
                 document.getElementById('status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-400";

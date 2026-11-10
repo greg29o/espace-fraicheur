@@ -285,12 +285,13 @@
     </div>
 
     <!-- Firebase SDK Imports -->
+    <!-- Firebase SDK Imports & Initialization -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // REPLACE WITH YOUR FIREBASE CONFIG KEYS
+        // Your exact Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyCsl3k_y8RNuUXbUZ8YCLwCK71LeVge5OA",
             authDomain: "espace-fraicheur.firebaseapp.com",
@@ -305,21 +306,22 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        // Expose db and collection helper to the global window scope
         window.db = db;
         window.colRef = (name) => collection(db, name);
 
-        // Authenticate anonymously
+        // Authenticate anonymously so Firestore security rules allow reading/writing
         signInAnonymously(auth)
             .then(() => {
                 document.getElementById('status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
                 document.getElementById('status-text').innerText = "Cloud Synced";
-                initApp();
+                if (typeof initApp === 'function') initApp();
             })
             .catch((error) => {
-                console.error("Auth error:", error);
+                console.error("Firebase Auth Error:", error);
                 document.getElementById('status-dot').className = "w-2.5 h-2.5 rounded-full bg-rose-500";
                 document.getElementById('status-text').innerText = "Sync Offline (Demo mode)";
-                initApp();
+                if (typeof initApp === 'function') initApp();
             });
     </script>
 

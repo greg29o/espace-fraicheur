@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Espace Fraicheur - Field Sales, Inventory & Financial Ledger</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white !important; color: black !important; }
+            .print-shadow { box-shadow: none !important; border: 1px solid #ddd; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans">
+
+    <!-- Header -->
+    <header class="bg-emerald-700 text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="bg-white p-2 rounded-lg text-emerald-700 font-bold text-xl shadow">
+                    <i class="fa-solid fa-seedling"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight">Espace Fraicheur</h1>
+                    <p class="text-xs text-emerald-200">Field Sales & Monthly Ledger</p>
+                </div>
+            </div>
+            <div id="sync-status" class="flex items-center space-x-2 text-xs bg-emerald-800 px-3 py-1.5 rounded-full border border-emerald-600 mt-2 sm:mt-0">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" id="status-dot"></span>
+                <span id="status-text">Connecting to Cloud...</span>
+            </div>
+        </div>
+        <!-- Navigation Tabs -->
+        <div class="bg-emerald-800 px-4 flex space-x-1 overflow-x-auto text-sm">
+            <button onclick="switchTab('catalog')" id="tab-btn-catalog" class="tab-btn px-4 py-2 font-medium text-white border-b-2 border-white whitespace-nowrap"><i class="fa-solid fa-boxes-stacked mr-1.5"></i> Catalog</button>
+            <button onclick="switchTab('tally')" id="tab-btn-tally" class="tab-btn px-4 py-2 font-medium text-emerald-200 hover:text-white whitespace-nowrap"><i class="fa-solid fa-clipboard-user mr-1.5"></i> Daily Tally</button>
+            <button onclick="switchTab('ledger')" id="tab-btn-ledger" class="tab-btn px-4 py-2 font-medium text-emerald-200 hover:text-white whitespace-nowrap"><i class="fa-solid fa-wallet mr-1.5"></i> Financial Ledger</button>
+            <button onclick="switchTab('records')" id="tab-btn-records" class="tab-btn px-4 py-2 font-medium text-emerald-200 hover:text-white whitespace-nowrap"><i class="fa-solid fa-cloud-arrow-down mr-1.5"></i> Shift Logs</button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-grow w-full">
+
+        <!-- TAB 1: CATALOG MANAGER -->
+        <section id="tab-catalog" class="tab-content space-y-6">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-box-open text-emerald-600 mr-2"></i>Product Catalog & Pricing</h2>
+                    <button onclick="openProductModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow transition"><i class="fa-solid fa-plus mr-1"></i> Add Product</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-600 text-xs uppercase tracking-wider">
+                                <th class="p-3">Product Name</th>
+                                <th class="p-3">Category</th>
+                                <th class="p-3">Unit Price (Rs)</th>
+                                <th class="p-3">Base Start Stock</th>
+                                <th class="p-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="catalog-table-body" class="divide-y divide-slate-200 text-sm">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2: DAILY STOCK & CASH TALLY -->
+        <section id="tab-tally" class="tab-content space-y-6 hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-lg font-bold text-slate-900 mb-4"><i class="fa-solid fa-calculator text-emerald-600 mr-2"></i>Daily Field Sales & Reconciliation</h2>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Shift Date</label>
+                        <input type="date" id="tally-date" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Field Seller Name</label>
+                        <input type="text" id="seller-name" placeholder="e.g. Jean Paul" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Actual Cash Handed Over (Rs)</label>
+                        <input type="number" id="actual-cash" placeholder="0.00" oninput="calculateTallyTotals()" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm font-bold bg-white focus:ring-2 focus:ring-emerald-500 outline-none text-emerald-700">
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto mb-6">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-600 text-xs uppercase tracking-wider">
+                                <th class="p-3">Product</th>
+                                <th class="p-3">Unit Price</th>
+                                <th class="p-3">Morning Stock (Taken)</th>
+                                <th class="p-3">Evening Stock (Returned)</th>
+                                <th class="p-3">Sold</th>
+                                <th class="p-3 text-right">Revenue (Rs)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tally-table-body" class="divide-y divide-slate-200 text-sm">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Tally Summary Card -->
+                <div class="bg-slate-900 text-white p-5 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-6 text-center md:text-left">
+                        <div>
+                            <p class="text-xs text-slate-400 uppercase">Expected Revenue</p>
+                            <p class="text-xl font-bold text-emerald-400" id="summary-expected">Rs 0.00</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-400 uppercase">Actual Cash Turn-In</p>
+                            <p class="text-xl font-bold text-white" id="summary-actual">Rs 0.00</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-400 uppercase">Variance Status</p>
+                            <p id="summary-variance-badge" class="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-slate-300 mt-1">Balanced</p>
+                        </div>
+                    </div>
+                    <button onclick="saveDailyTally()" class="w-full md:w-auto bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-6 py-3 rounded-lg shadow transition flex items-center justify-center space-x-2">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>Sync Shift Report to Cloud</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 3: MONTHLY FINANCIAL LEDGER -->
+        <section id="tab-ledger" class="tab-content space-y-6 hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-wallet text-emerald-600 mr-2"></i>Monthly Financial Ledger & P&L</h2>
+                        <p class="text-xs text-slate-500">Auto-tracks shift revenues and records monthly operational expenses.</p>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <input type="month" id="ledger-month-filter" onchange="renderLedger()" class="border border-slate-300 rounded-lg p-2 text-sm bg-white">
+                        <button onclick="openExpenseModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow transition"><i class="fa-solid fa-receipt mr-1"></i> Add Expense</button>
+                    </div>
+                </div>
+
+                <!-- Monthly KPI Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl">
+                        <p class="text-xs font-semibold text-emerald-800 uppercase">Total Monthly Revenue</p>
+                        <p class="text-2xl font-black text-emerald-900 mt-1" id="kpi-revenue">Rs 0.00</p>
+                    </div>
+                    <div class="bg-rose-50 border border-rose-200 p-4 rounded-xl">
+                        <p class="text-xs font-semibold text-rose-800 uppercase">Total Monthly Expenses</p>
+                        <p class="text-2xl font-black text-rose-900 mt-1" id="kpi-expenses">Rs 0.00</p>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl">
+                        <p class="text-xs font-semibold text-blue-800 uppercase">Net Profit / Loss</p>
+                        <p class="text-2xl font-black text-blue-900 mt-1" id="kpi-net">Rs 0.00</p>
+                    </div>
+                    <div class="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+                        <p class="text-xs font-semibold text-amber-800 uppercase">Total Cash Shortages</p>
+                        <p class="text-2xl font-black text-amber-900 mt-1" id="kpi-shortages">Rs 0.00</p>
+                    </div>
+                </div>
+
+                <!-- Ledger Transactions Table -->
+                <div class="overflow-x-auto mb-6">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-600 text-xs uppercase tracking-wider">
+                                <th class="p-3">Date</th>
+                                <th class="p-3">Type</th>
+                                <th class="p-3">Category / Description</th>
+                                <th class="p-3">Reference / Seller</th>
+                                <th class="p-3 text-right">Amount (Rs)</th>
+                                <th class="p-3 text-right no-print">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ledger-table-body" class="divide-y divide-slate-200 text-sm">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Export & Print Actions -->
+                <div class="flex justify-end space-x-3 no-print">
+                    <button onclick="exportLedgerCSV()" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium shadow transition"><i class="fa-solid fa-file-csv mr-1.5"></i> Export CSV</button>
+                    <button onclick="window.print()" class="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-sm font-medium shadow transition"><i class="fa-solid fa-print mr-1.5"></i> Print Statement</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 4: CLOUD SHIFT LOGS -->
+        <section id="tab-records" class="tab-content space-y-6 hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-lg font-bold text-slate-900 mb-4"><i class="fa-solid fa-cloud text-emerald-600 mr-2"></i>Cloud Shift Reports Archive</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-600 text-xs uppercase tracking-wider">
+                                <th class="p-3">Date</th>
+                                <th class="p-3">Seller</th>
+                                <th class="p-3">Expected Rev</th>
+                                <th class="p-3">Turn-In Cash</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="records-table-body" class="divide-y divide-slate-200 text-sm">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- PRODUCT MODAL -->
+    <div id="product-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <h3 class="text-lg font-bold text-slate-900" id="product-modal-title">Add New Product</h3>
+            <input type="hidden" id="edit-product-id">
+            <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Product Name</label>
+                <input type="text" id="prod-name" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Category</label>
+                <input type="text" id="prod-category" placeholder="e.g. Produce, Drinks" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Unit Price (Rs)</label>
+                <input type="number" id="prod-price" step="0.01" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Base Start Stock</label>
+                <input type="number" id="prod-stock" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeProductModal()" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+                <button onclick="saveProduct()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-medium shadow transition">Save Product</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXPENSE MODAL -->
+    <div id="expense-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <h3 class="text-lg font-bold text-slate-900">Record Operational Expense</h3>
+            <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Date</label>
+                <input type="date" id="exp-date" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Category</label>
+                <select id="exp-category" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+                    <option value="Fuel & Transport">Fuel & Transport</option>
+                    <option value="Vehicle Maintenance">Vehicle Maintenance</option>
+                    <option value="Meals & Allowance">Meals & Allowance</option>
+                    <option value="Packaging & Supplies">Packaging & Supplies</option>
+                    <option value="Salaries & Wages">Salaries & Wages</option>
+                    <option value="Miscellaneous">Miscellaneous</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Description / Notes</label>
+                <input type="text" id="exp-notes" placeholder="e.g. Van servicing & fuel refill" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Amount (Rs)</label>
+                <input type="number" id="exp-amount" step="0.01" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm font-bold text-rose-700 focus:ring-2 focus:ring-emerald-500 outline-none">
+            </div>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeExpenseModal()" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+                <button onclick="saveExpense()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-medium shadow transition">Record Expense</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // REPLACE WITH YOUR FIREBASE CONFIG KEYS
+        const firebaseConfig = {
+            apiKey: "AIzaSyCsl3k_y8RNuUXbUZ8YCLwCK71LeVge5OA",
+            authDomain: "espace-fraicheur.firebaseapp.com",
+            projectId: "espace-fraicheur",
+            storageBucket: "espace-fraicheur.firebasestorage.app",
+            messagingSenderId: "167155001085",
+            appId: "1:167155001085:web:a564df4e311c580708c094",
+            measurementId: "G-1ECFCP966G"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        window.db = db;
+        window.colRef = (name) => collection(db, name);
+
+        // Authenticate anonymously
+        signInAnonymously(auth)
+            .then(() => {
+                document.getElementById('status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+                document.getElementById('status-text').innerText = "Cloud Synced";
+                initApp();
+            })
+            .catch((error) => {
+                console.error("Auth error:", error);
+                document.getElementById('status-dot').className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+                document.getElementById('status-text').innerText = "Sync Offline (Demo mode)";
+                initApp();
+            });
+    </script>
+
+    <!-- App Logic -->
+    <script>
+        let products = [
+            { id: 'p1', name: 'Fresh Organic Tomatoes (1kg)', category: 'Produce', price: 75, stock: 50 },
+            { id: 'p2', name: 'Local Lettuce (Pack)', category: 'Produce', price: 35, stock: 40 },
+            { id: 'p3', name: 'Fresh Milk (1L)', category: 'Dairy', price: 60, stock: 30 }
+        ];
+        let shiftLogs = [];
+        let ledgerEntries = [];
+
+        function initApp() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('tally-date').value = today;
+            document.getElementById('exp-date').value = today;
+            document.getElementById('ledger-month-filter').value = today.slice(0, 7);
+
+            loadFromCloud();
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('border-b-2', 'border-white', 'text-white');
+                el.classList.add('text-emerald-200');
+            });
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+            activeBtn.classList.add('border-b-2', 'border-white', 'text-white');
+            activeBtn.classList.remove('text-emerald-200');
+
+            if(tabId === 'tally') renderTallyTable();
+            if(tabId === 'ledger') renderLedger();
+            if(tabId === 'records') renderRecordsTable();
+        }
+
+        function loadFromCloud() {
+            if (!window.db) { renderAll(); return; }
+            
+            // Listen to Products
+            onSnapshot(window.colRef('espace_products'), (snapshot) => {
+                if(!snapshot.empty) {
+                    products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                }
+                renderCatalog();
+                renderTallyTable();
+            });
+
+            // Listen to Shift Logs
+            onSnapshot(window.colRef('espace_shifts'), (snapshot) => {
+                shiftLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderRecordsTable();
+                syncShiftsToLedger();
+            });
+
+            // Listen to Expenses
+            onSnapshot(window.colRef('espace_expenses'), (snapshot) => {
+                ledgerEntries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderLedger();
+            });
+        }
+
+        function renderAll() {
+            renderCatalog();
+            renderTallyTable();
+            renderLedger();
+            renderRecordsTable();
+        }
+
+        // --- CATALOG ---
+        function renderCatalog() {
+            const tbody = document.getElementById('catalog-table-body');
+            tbody.innerHTML = products.map(p => `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-3 font-medium">${p.name}</td>
+                    <td class="p-3 text-slate-500">${p.category}</td>
+                    <td class="p-3 font-bold text-emerald-700">Rs ${Number(p.price).toFixed(2)}</td>
+                    <td class="p-3">${p.stock} units</td>
+                    <td class="p-3 text-right space-x-2">
+                        <button onclick="editProduct('${p.id}')" class="text-blue-600 hover:text-blue-800 p-1"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="deleteProduct('${p.id}')" class="text-rose-600 hover:text-rose-800 p-1"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function openProductModal(id = null) {
+            document.getElementById('product-modal').classList.remove('hidden');
+            if(id) {
+                const p = products.find(x => x.id === id);
+                document.getElementById('product-modal-title').innerText = "Edit Product";
+                document.getElementById('edit-product-id').value = p.id;
+                document.getElementById('prod-name').value = p.name;
+                document.getElementById('prod-category').value = p.category;
+                document.getElementById('prod-price').value = p.price;
+                document.getElementById('prod-stock').value = p.stock;
+            } else {
+                document.getElementById('product-modal-title').innerText = "Add New Product";
+                document.getElementById('edit-product-id').value = '';
+                document.getElementById('prod-name').value = '';
+                document.getElementById('prod-category').value = '';
+                document.getElementById('prod-price').value = '';
+                document.getElementById('prod-stock').value = '';
+            }
+        }
+
+        function closeProductModal() { document.getElementById('product-modal').classList.add('hidden'); }
+
+        async function saveProduct() {
+            const id = document.getElementById('edit-product-id').value;
+            const data = {
+                name: document.getElementById('prod-name').value,
+                category: document.getElementById('prod-category').value,
+                price: parseFloat(document.getElementById('prod-price').value) || 0,
+                stock: parseInt(document.getElementById('prod-stock').value) || 0
+            };
+            if(!data.name) return alert('Please enter product name.');
+
+            if(window.db) {
+                if(id) {
+                    await updateDoc(doc(window.db, 'espace_products', id), data);
+                } else {
+                    await addDoc(window.colRef('espace_products'), data);
+                }
+            } else {
+                if(id) {
+                    const idx = products.findIndex(p => p.id === id);
+                    products[idx] = { id, ...data };
+                } else {
+                    products.push({ id: 'p_' + Date.now(), ...data });
+                }
+                renderAll();
+            }
+            closeProductModal();
+        }
+
+        async function deleteProduct(id) {
+            if(!confirm('Are you sure you want to delete this product?')) return;
+            if(window.db) {
+                await deleteDoc(doc(window.db, 'espace_products', id));
+            } else {
+                products = products.filter(p => p.id !== id);
+                renderAll();
+            }
+        }
+
+        function editProduct(id) { openProductModal(id); }
+
+        // --- DAILY TALLY ---
+        function renderTallyTable() {
+            const tbody = document.getElementById('tally-table-body');
+            tbody.innerHTML = products.map(p => `
+                <tr class="hover:bg-slate-50 tally-row" data-id="${p.id}" data-price="${p.price}">
+                    <td class="p-3 font-medium">${p.name}</td>
+                    <td class="p-3 text-emerald-700 font-semibold">Rs ${p.price.toFixed(2)}</td>
+                    <td class="p-3"><input type="number" value="${p.stock}" class="tally-start w-24 border border-slate-300 rounded p-1.5 text-sm bg-white" oninput="calculateTallyTotals()"></td>
+                    <td class="p-3"><input type="number" value="0" class="tally-return w-24 border border-slate-300 rounded p-1.5 text-sm bg-white" oninput="calculateTallyTotals()"></td>
+                    <td class="p-3 font-bold text-slate-700 tally-sold">0</td>
+                    <td class="p-3 text-right font-bold text-emerald-700 tally-rev">Rs 0.00</td>
+                </tr>
+            `).join('');
+            calculateTallyTotals();
+        }
+
+        function calculateTallyTotals() {
+            let totalExpected = 0;
+            document.querySelectorAll('.tally-row').forEach(row => {
+                const price = parseFloat(row.dataset.price);
+                const start = parseInt(row.querySelector('.tally-start').value) || 0;
+                const ret = parseInt(row.querySelector('.tally-end, .tally-return').value) || 0;
+                const sold = Math.max(0, start - ret);
+                const rev = sold * price;
+                
+                row.querySelector('.tally-sold').innerText = sold;
+                row.querySelector('.tally-rev').innerText = `Rs ${rev.toFixed(2)}`;
+                totalExpected += rev;
+            });
+
+            const actual = parseFloat(document.getElementById('actual-cash').value) || 0;
+            const variance = actual - totalExpected;
+
+            document.getElementById('summary-expected').innerText = `Rs ${totalExpected.toFixed(2)}`;
+            document.getElementById('summary-actual').innerText = `Rs ${actual.toFixed(2)}`;
+
+            const badge = document.getElementById('summary-variance-badge');
+            if(Math.abs(variance) < 0.01) {
+                badge.className = "inline-block px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-slate-950 mt-1";
+                badge.innerText = "Balanced";
+            } else if(variance > 0) {
+                badge.className = "inline-block px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500 text-white mt-1";
+                badge.innerText = `Overage: +Rs ${variance.toFixed(2)}`;
+            } else {
+                badge.className = "inline-block px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500 text-white mt-1";
+                badge.innerText = `Shortage: -Rs ${Math.abs(variance).toFixed(2)}`;
+            }
+        }
+
+        async function saveDailyTally() {
+            const date = document.getElementById('tally-date').value;
+            const seller = document.getElementById('seller-name').value.trim();
+            const actual = parseFloat(document.getElementById('actual-cash').value) || 0;
+            if(!seller) return alert('Please enter field seller name.');
+
+            let totalExpected = 0;
+            let items = [];
+            document.querySelectorAll('.tally-row').forEach(row => {
+                const id = row.dataset.id;
+                const price = parseFloat(row.dataset.price);
+                const start = parseInt(row.querySelector('.tally-start').value) || 0;
+                const ret = parseInt(row.querySelector('.tally-return').value) || 0;
+                const sold = Math.max(0, start - ret);
+                const rev = sold * price;
+                totalExpected += rev;
+                items.push({ id, start, return: ret, sold, revenue: rev });
+            });
+
+            const shiftData = {
+                date,
+                seller,
+                expectedRevenue: totalExpected,
+                actualCash: actual,
+                variance: actual - totalExpected,
+                items,
+                timestamp: Date.now()
+            };
+
+            if(window.db) {
+                await addDoc(window.colRef('espace_shifts'), shiftData);
+            } else {
+                shiftLogs.push({ id: 's_' + Date.now(), ...shiftData });
+            }
+
+            alert('Shift report successfully saved and synced to cloud!');
+            switchTab('records');
+        }
+
+        // --- RECORDS & LEDGER SYNC ---
+        function renderRecordsTable() {
+            const tbody = document.getElementById('records-table-body');
+            tbody.innerHTML = shiftLogs.map(s => `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-3 font-medium">${s.date}</td>
+                    <td class="p-3">${s.seller}</td>
+                    <td class="p-3 text-emerald-700 font-semibold">Rs ${s.expectedRevenue.toFixed(2)}</td>
+                    <td class="p-3 font-bold">Rs ${s.actualCash.toFixed(2)}</td>
+                    <td class="p-3">
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${s.variance >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
+                            ${s.variance === 0 ? 'Balanced' : (s.variance > 0 ? `+Rs ${s.variance.toFixed(2)}` : `-Rs ${Math.abs(s.variance).toFixed(2)}`)}
+                        </span>
+                    </td>
+                    <td class="p-3 text-right">
+                        <button onclick="deleteShift('${s.id}')" class="text-rose-600 hover:text-rose-800 p-1"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function deleteShift(id) {
+            if(!confirm('Delete this shift report?')) return;
+            if(window.db) {
+                await deleteDoc(doc(window.db, 'espace_shifts', id));
+            } else {
+                shiftLogs = shiftLogs.filter(s => s.id !== id);
+                renderRecordsTable();
+            }
+        }
+
+        // --- FINANCIAL LEDGER ---
+        function openExpenseModal() { document.getElementById('expense-modal').classList.remove('hidden'); }
+        function closeExpenseModal() { document.getElementById('expense-modal').classList.add('hidden'); }
+
+        async function saveExpense() {
+            const data = {
+                type: 'Expense',
+                date: document.getElementById('exp-date').value,
+                category: document.getElementById('exp-category').value,
+                notes: document.getElementById('exp-notes').value || 'Operational Expense',
+                amount: parseFloat(document.getElementById('exp-amount').value) || 0,
+                timestamp: Date.now()
+            };
+            if(!data.amount) return alert('Please enter an amount.');
+
+            if(window.db) {
+                await addDoc(window.colRef('espace_expenses'), data);
+            } else {
+                ledgerEntries.push({ id: 'e_' + Date.now(), ...data });
+                renderLedger();
+            }
+            closeExpenseModal();
+            document.getElementById('exp-amount').value = '';
+            document.getElementById('exp-notes').value = '';
+        }
+
+        function syncShiftsToLedger() {
+            renderLedger();
+        }
+
+        function renderLedger() {
+            const selectedMonth = document.getElementById('ledger-month-filter').value;
+            const tbody = document.getElementById('ledger-table-body');
+
+            // Build unified transaction list for selected month
+            let transactions = [];
+
+            // Add shift incomes
+            shiftLogs.forEach(s => {
+                if(!s.date.startsWith(selectedMonth)) return;
+                transactions.push({
+                    id: s.id,
+                    date: s.date,
+                    type: 'Income',
+                    category: 'Field Sales Collection',
+                    reference: `Seller: ${s.seller}`,
+                    amount: s.actualCash,
+                    variance: s.variance,
+                    isShift: true
+                });
+            });
+
+            // Add recorded expenses
+            ledgerEntries.forEach(e => {
+                if(!e.date.startsWith(selectedMonth)) return;
+                transactions.push({
+                    id: e.id,
+                    date: e.date,
+                    type: 'Expense',
+                    category: e.category,
+                    reference: e.notes,
+                    amount: e.amount,
+                    isShift: false
+                });
+            });
+
+            // Sort by date descending
+            transactions.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+            let totalRev = 0;
+            let totalExp = 0;
+            let totalShortages = 0;
+
+            tbody.innerHTML = transactions.map(t => {
+                if(t.type === 'Income') totalRev += t.amount;
+                if(t.type === 'Expense') totalExp += t.amount;
+                if(t.isShift && t.variance < 0) totalShortages += Math.abs(t.variance);
+
+                return `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-3 font-medium">${t.date}</td>
+                        <td class="p-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${t.type === 'Income' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${t.type}</span></td>
+                        <td class="p-3">${t.category}</td>
+                        <td class="p-3 text-slate-500 text-xs">${t.reference}</td>
+                        <td class="p-3 text-right font-bold ${t.type === 'Income' ? 'text-emerald-700' : 'text-rose-700'}">${t.type === 'Income' ? '+' : '-'}Rs ${t.amount.toFixed(2)}</td>
+                        <td class="p-3 text-right no-print">
+                            <button onclick="deleteLedgerItem('${t.id}', ${t.isShift})" class="text-rose-600 hover:text-rose-800 p-1"><i class="fa-solid fa-trash"></i></button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const netProfit = totalRev - totalExp;
+
+            document.getElementById('kpi-revenue').innerText = `Rs ${totalRev.toFixed(2)}`;
+            document.getElementById('kpi-expenses').innerText = `Rs ${totalExp.toFixed(2)}`;
+            
+            const netEl = document.getElementById('kpi-net');
+            netEl.innerText = `Rs ${netProfit.toFixed(2)}`;
+            netEl.className = `text-2xl font-black mt-1 ${netProfit >= 0 ? 'text-blue-900' : 'text-rose-900'}`;
+
+            document.getElementById('kpi-shortages').innerText = `Rs ${totalShortages.toFixed(2)}`;
+        }
+
+        async function deleteLedgerItem(id, isShift) {
+            if(!confirm('Delete this ledger entry?')) return;
+            const collectionName = isShift ? 'espace_shifts' : 'espace_expenses';
+            if(window.db) {
+                await deleteDoc(doc(window.db, collectionName, id));
+            } else {
+                if(isShift) shiftLogs = shiftLogs.filter(s => s.id !== id);
+                else ledgerEntries = ledgerEntries.filter(e => e.id !== id);
+                renderLedger();
+            }
+        }
+
+        function exportLedgerCSV() {
+            let csv = "Date,Type,Category,Reference,Amount (Rs)\n";
+            shiftLogs.forEach(s => {
+                csv += `"${s.date}","Income","Field Sales Collection","Seller: ${s.seller}",${s.actualCash}\n`;
+            });
+            ledgerEntries.forEach(e => {
+                csv += `"${e.date}","Expense","${e.category}","${e.notes}",-${e.amount}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('href', url);
+            a.setAttribute('download', `Espace_Fraicheur_Ledger_${document.getElementById('ledger-month-filter').value}.csv`);
+            a.click();
+        }
+    </script>
+</body>
+</html>
